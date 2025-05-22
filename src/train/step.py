@@ -30,27 +30,29 @@ def huber_loss(y: Array, y_pred: Array, mask: Array, *, huber_delta: float = 1.0
 
 def flux_agreement(y_pred: Array, target_list: list):
     """Calculates the normalized difference between direct SSF and SSC*Q flux estimates"""
-    ssc = y_pred[:, target_list.index('ssc')] / 1E6  # mg/l -> kg/l
-    flux = y_pred[:, target_list.index('flux')] / 1.102 / 1E3  # short ton/day -> kg/d
-    q = y_pred[:, target_list.index('usgs_q')] * 24 * 3600 * 1000  # m^3/s -> l/d
+    ssc = y_pred[:, target_list.index("ssc")] / 1e6  # mg/l -> kg/l
+    flux = y_pred[:, target_list.index("flux")] / 1.102 / 1e3  # short ton/day -> kg/d
+    q = y_pred[:, target_list.index("usgs_q")] * 24 * 3600 * 1000  # m^3/s -> l/d
 
     rel_error = ((ssc * q) - flux) / ((ssc * q + flux) / 2)
     return jnp.mean(jnp.square(rel_error))
 
 
-def compute_loss_fn(diff_model: PyTree,
-                    static_model: PyTree,
-                    data: dict[str:Array | dict[str:Array]],
-                    keys: list[PRNGKeyArray],
-                    denormalize_fn: Callable,
-                    *,
-                    loss_name: str = 'mse',
-                    target_weights: float | list[float] = 1,
-                    agreement_weight: float = 0,
-                    **kwargs) -> float:
+def compute_loss_fn(
+    diff_model: PyTree,
+    static_model: PyTree,
+    data: dict[str : Array | dict[str:Array]],
+    keys: list[PRNGKeyArray],
+    denormalize_fn: Callable,
+    *,
+    loss_name: str = "mse",
+    target_weights: float | list[float] = 1,
+    agreement_weight: float = 0,
+    **kwargs,
+) -> float:
     """Compute the loss between the predicted and true values.
 
-    Includes options for per-target weighting and physics-based regularization for 
+    Includes options for per-target weighting and physics-based regularization for
     specific variable combinations.
 
     Parameters
@@ -62,16 +64,16 @@ def compute_loss_fn(diff_model: PyTree,
     data: dict[str: Array | dict[str: Array]]
         Batch of data to use for training.
     keys: list[PRNGKeyArray]
-        Batch of keys to use for the random dropout in the model. 
+        Batch of keys to use for the random dropout in the model.
     denormalize_fn: Callable
-        Function to use to denormalize the predictions. This is useful for some 
+        Function to use to denormalize the predictions. This is useful for some
         types of regularization.
     loss_name: str, optional
         Name of the loss function to use.
     target_weights: float | list[float], optional
         Weights to use for the target variables.
     agreement_weight: float, optional
-        Agreement regularization weight. Currently, only applicable when predicting 
+        Agreement regularization weight. Currently, only applicable when predicting
         SSC, SSF, and Q.
     **kwargs
         Additional keyword arguments.
@@ -83,7 +85,7 @@ def compute_loss_fn(diff_model: PyTree,
     model = eqx.combine(diff_model, static_model)
     y_pred = jax.vmap(model)(data, keys)
 
-    y = data['y']  #if seq2seq else data['y'][:, -1, ...]
+    y = data["y"]  # if seq2seq else data['y'][:, -1, ...]
     valid_mask = ~jnp.isnan(y)
     masked_y = jnp.where(valid_mask, y, 0)
     masked_y_pred = jnp.where(valid_mask, y_pred, 0)
@@ -131,24 +133,29 @@ def clip_gradients(grads: PyTree, max_norm: float) -> PyTree:
         The clipped gradients.
     """
 
-    total_norm = jtu.tree_reduce(lambda x, y: x + y,
-                                 jtu.tree_map(lambda x: jnp.sum(x**2), grads))
+    total_norm = jtu.tree_reduce(lambda x, y: x + y, jtu.tree_map(lambda x: jnp.sum(x**2), grads))
     total_norm = jnp.sqrt(total_norm)
     scale = jnp.minimum(max_norm / total_norm, 1.0)
     return jtu.tree_map(lambda g: scale * g, grads)
 
 
 @eqx.filter_jit
-def make_step(model: eqx.Module, data: dict[str:Array | dict[str:Array]],
-              keys: list[PRNGKeyArray], opt_state: PyTree, optim: Callable,
-              filter_spec: PyTree, denormalize_fn: Callable,
-              **kwargs) -> tuple[float, PyTree, eqx.Module, PyTree]:
+def make_step(
+    model: eqx.Module,
+    data: dict[str : Array | dict[str:Array]],
+    keys: list[PRNGKeyArray],
+    opt_state: PyTree,
+    optim: Callable,
+    filter_spec: PyTree,
+    denormalize_fn: Callable,
+    **kwargs,
+) -> tuple[float, PyTree, eqx.Module, PyTree]:
     """Performs a single optimization step, updating the model parameters.
 
     Parameters
     ----------
     model: eqx.Module
-        Equinox model to train. Must take in a dict of data and PRNGKey. 
+        Equinox model to train. Must take in a dict of data and PRNGKey.
     data: dict[str: Array | dict[str: Array]]
         The batch of training data.
     keys: list[PRNGKeyArray]
@@ -156,10 +163,10 @@ def make_step(model: eqx.Module, data: dict[str:Array | dict[str:Array]],
     opt_state: PyTree
     optim: Callable
     filter_spec: PyTree
-        The filter specification. True values indicate which parameters will be updated. 
+        The filter specification. True values indicate which parameters will be updated.
     denormalize_fn: Callable
-        The denormalization function. Useful for physical regularization, when we can 
-        enforce some relationship between the real quantites, rather than their normalized or encoded values. 
+        The denormalization function. Useful for physical regularization, when we can
+        enforce some relationship between the real quantites, rather than their normalized or encoded values.
     max_grad_norm: float, optional
         The maximum gradient norm.
 
@@ -177,11 +184,10 @@ def make_step(model: eqx.Module, data: dict[str:Array | dict[str:Array]],
     diff_model, static_model = eqx.partition(model, filter_spec)
 
     loss_fn_with_grad = eqx.filter_value_and_grad(compute_loss_fn)
-    loss, grads = loss_fn_with_grad(diff_model, static_model, data, keys,
-                                    denormalize_fn, **kwargs)
+    loss, grads = loss_fn_with_grad(diff_model, static_model, data, keys, denormalize_fn, **kwargs)
 
-    if kwargs.get('max_grad_norm'):
-        grads = clip_gradients(grads, kwargs.get('max_grad_norm'))
+    if kwargs.get("max_grad_norm"):
+        grads = clip_gradients(grads, kwargs.get("max_grad_norm"))
 
     updates, opt_state = optim.update(grads, opt_state)
     model = eqx.apply_updates(model, updates)

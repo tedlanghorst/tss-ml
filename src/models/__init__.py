@@ -2,12 +2,10 @@ import jax
 from jaxtyping import PyTree
 import equinox as eqx
 
-from models.flexible_hybrid import FlexibleHybrid
 from models.lstm_mlp_attn import LSTM_MLP_ATTN
-from models.lstm_mlp_attn_simple import LSTM_MLP_ATTN_SIMPLE
-from models.attn_lstm import ATTN_LSTM
 from models.stacked_lstm import STACKED_LSTM
-from models.rg_lstm import Graph_LSTM
+from models.ea_lstm import EA_LSTM
+from models.ea_transformer import EA_TRANSFORMER
 
 
 def make(cfg: dict):
@@ -23,25 +21,23 @@ def make(cfg: dict):
     eqx.Module
         The created model.
     """
-    name = cfg['model'].lower()
-    if name == "flexible_hybrid":
-        model_fn = FlexibleHybrid
-    elif name == "lstm_mlp_attn":
+    name = cfg["model"].lower()
+    if name == "lstm_mlp_attn":
         model_fn = LSTM_MLP_ATTN
-    elif name == "lstm_mlp_attn_simple":
-        model_fn = LSTM_MLP_ATTN_SIMPLE
-    elif name == 'attn_lstm':
-        model_fn = ATTN_LSTM
-    elif name == 'stacked_lstm':
+    elif name == "ea_lstm":
+        model_fn = EA_LSTM
+    elif name == "stacked_lstm":
         model_fn = STACKED_LSTM
-    elif name == 'graph_lstm':
-        model_fn = Graph_LSTM
+    elif name == "ea_transformer":
+        model_fn = EA_TRANSFORMER
     else:
-        err_str = (f"{cfg['model']} is not a valid model name. " +
-                   "Check /src/models/__init__.py for model config.")
+        err_str = (
+            f"{cfg['model']} is not a valid model name. "
+            + "Check /src/models/__init__.py for model config."
+        )
         raise ValueError(err_str)
 
-    model = model_fn(**cfg['model_args'])
+    model = model_fn(**cfg["model_args"])
     num_params, memory_bytes = count_parameters(model)
     size, unit = human_readable_size(memory_bytes)
     print(f"Model contains {num_params:,} parameters, using {size:.2f}{unit} memory.")
@@ -76,8 +72,8 @@ def count_parameters(model: PyTree):
 
 # Convert bytes to a human-readable format
 def human_readable_size(size):
-    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
-        if size < 1024.0 or unit == 'TB':
+    for unit in ["B", "KB", "MB", "GB", "TB"]:
+        if size < 1024.0 or unit == "TB":
             break
         size /= 1024.0
     return size, unit

@@ -1,11 +1,13 @@
+import numpy as np
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 from jaxtyping import Array, PRNGKeyArray
-import numpy as np
+
+from ..base_model import BaseModel
 
 
-class RG_LSTM(eqx.Module):
+class RG_LSTM(BaseModel):
     """
     Recurrent Graph LSTM model.
 
@@ -41,18 +43,26 @@ class RG_LSTM(eqx.Module):
     dense: eqx.nn.Linear
         The dense layer.
     """
+
     graph_matrix: jnp.ndarray
     num_graph_nodes: int
     hidden_size: int
     cell: eqx.nn.LSTMCell
     q_proj: eqx.nn.Linear
     dropout: eqx.nn.Dropout
-    lstm_dense: eqx.nn.Linear
-    graph_dense: eqx.nn.Linear
+    lstm_head: eqx.nn.Linear
 
-    def __init__(self, input_size: int, hidden_size: int, lstm_out_size: int,
-                 graph_conv_out_size: int, graph_matrix: Array, dropout: float, *,
-                 key: PRNGKeyArray):
+    def __init__(
+        self,
+        input_size: int,
+        hidden_size: int,
+        lstm_targets: list[str],
+        graph_conv_targets: list[str],
+        graph_matrix: Array,
+        dropout: float,
+        *,
+        key: PRNGKeyArray,
+    ):
         self.graph_matrix = self._calc_adjacency(graph_matrix)
         self.num_graph_nodes = graph_matrix.shape[0]
         self.hidden_size = hidden_size
@@ -61,8 +71,8 @@ class RG_LSTM(eqx.Module):
         self.cell = eqx.nn.LSTMCell(input_size, hidden_size, key=keys[0])
         self.q_proj = eqx.nn.Linear(hidden_size, hidden_size, key=keys[1])
         self.dropout = eqx.nn.Dropout(dropout)
-        self.lstm_dense = eqx.nn.Linear(hidden_size, lstm_out_size, key=keys[2])
-        self.graph_dense = eqx.nn.Linear(hidden_size, graph_conv_out_size, key=keys[3])
+        self.lstm_head = eqx.nn.Linear(hidden_size, len(lstm_targets), key=keys[2])
+        self.head = eqx.nn.Linear(hidden_size, len(graph_conv_targets), key=keys[3])
 
     def _calc_adjacency(self, dist: Array) -> Array:
         """
@@ -108,7 +118,7 @@ class RG_LSTM(eqx.Module):
         """
 
         def scan_fn(state: tuple[Array, Array], x_d_t: Array):
-            #Transfer variables
+            # Transfer variables
             q = jax.vmap(self._transfer)(state[0])
             # We have to use stop_gradient to avoid updating the graph matrix.
             # I had problems using regular numpy arrays stopping gradients of q.
@@ -119,8 +129,7 @@ class RG_LSTM(eqx.Module):
 
             return new_state, new_state
 
-        init_state = (jnp.zeros(
-            (self.num_graph_nodes, self.hidden_size)),) * 2  # Tuple of h, c
+        init_state = (jnp.zeros((self.num_graph_nodes, self.hidden_size)),) * 2  # Tuple of h, c
         (h_final, _), all_states = jax.lax.scan(scan_fn, init_state, x_d)
 
         h_final = self.dropout(h_final, key=key)
@@ -157,22 +166,32 @@ class Graph_LSTM(eqx.Module):
     target: list
         The target variables.
     """
+
     rg_lstm: RG_LSTM
     target: list
 
-    def __init__(self, *, target: list, dynamic_size: int, static_size: int,
-                 hidden_size: int, graph_matrix: np.array, seed: int, dropout: float):
-
+    def __init__(
+        self,
+        *,
+        target: list,
+        dynamic_size: int,
+        static_size: int,
+        hidden_size: int,
+        graph_matrix: np.array,
+        seed: int,
+        dropout: float,
+    ):
         key = jax.random.PRNGKey(seed)
-        self.rg_lstm = RG_LSTM(dynamic_size + static_size,
-                               hidden_size,
-                               len(target),
-                               graph_matrix,
-                               dropout,
-                               key=key)
+        self.rg_lstm = RG_LSTM(
+            dynamic_size + static_size,
+            hidden_size,
+            len(target),
+            graph_matrix,
+            dropout,
+            key=key,
+        )
 
         self.target = target
 
-    def __call__(self, data: dict[str:Array | dict[str:Array]],
-                 key: PRNGKeyArray) -> Array:
-        return self.rg_lstm(data['dynamic']['era5'], data['static'], key=key)
+    def __call__(self, data: dict[str : Array | dict[str:Array]], key: PRNGKeyArray) -> Array:
+        return self.rg_lstm(data["dynamic"]["era5"], data["static"], key=key)

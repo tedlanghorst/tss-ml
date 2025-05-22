@@ -12,14 +12,14 @@ from distributed import as_completed
 def _create_configspace(cfg):
     """Creates a ConfigSpace object from a parameter dictionary."""
     cs = CS.ConfigurationSpace()
-    cs.add(CSH.Constant('cfg_path', value=str(cfg['cfg_path'])))
+    cs.add(CSH.Constant("cfg_path", value=str(cfg["cfg_path"])))
 
-    for param_name, param in cfg['param_search_dict'].items():
+    for param_name, param in cfg["param_search_dict"].items():
         for param_type, param_range in param.items():
             args = {
-                'name': param_name,
-                'lower': param_range[0],
-                'upper': param_range[1]
+                "name": param_name,
+                "lower": param_range[0],
+                "upper": param_range[1],
             }
 
             if param_type == "int":
@@ -43,26 +43,28 @@ def update_smac_config(base_cfg, updates, seed):
             if k in updates.keys():
                 base_cfg[k] = updates[k]
 
-    base_cfg['model_args']['seed'] = seed
+    base_cfg["model_args"]["seed"] = seed
     return base_cfg
 
 
 def get_dask_client(cfg, n_workers):
-    path = Path(cfg['cfg_path'])
+    path = Path(cfg["cfg_path"])
 
     cluster = SLURMCluster(
-        job_name='dask-' + path.stem,
-        queue='gpu',
+        job_name="dask-" + path.stem,
+        queue="gpu",
         cores=2,
         processes=1,
         memory="16GB",
         walltime="14-00:00:00",
-        log_directory=path.parent / "_slurm_outputs" / 'trials',
+        log_directory=path.parent / "_slurm_outputs" / "trials",
         job_extra_directives=["-q long", "--gpus=1", "--constraint=sm_61&vram11"],
         job_script_prologue=[
-            "module load conda/latest", "conda activate tss-ml",
-            "module load cuda/12.6", "export XLA_PYTHON_CLIENT_MEM_FRACTION=0.8",
-            "export PYTHONPATH=\"/work/pi_kandread_umass_edu/tss-ml/src:$PYTHONPATH\""
+            "module load conda/latest",
+            "conda activate tss-ml",
+            "module load cuda/12.6",
+            "export XLA_PYTHON_CLIENT_MEM_FRACTION=0.8",
+            'export PYTHONPATH="/work/pi_kandread_umass_edu/tss-ml/src:$PYTHONPATH"',
         ],
     )
     cluster.scale(n_workers)
@@ -75,7 +77,7 @@ def get_dask_client(cfg, n_workers):
 
 def get_smac_facade(cfg, target_fun, n_runs):
     configspace = _create_configspace(cfg)
-    path = Path(cfg['cfg_path'])
+    path = Path(cfg["cfg_path"])
 
     scenario = Scenario(
         configspace=configspace,
@@ -90,7 +92,8 @@ def get_smac_facade(cfg, target_fun, n_runs):
         scenario,
         target_fun,
         overwrite=False,  # Continues if a file with consistent metadata exists.
-        config_selector=configselector)
+        config_selector=configselector,
+    )
 
     return facade
 
@@ -112,8 +115,7 @@ def manual_smac_optimize(cfg: dict, n_workers: int, n_runs: int, target_fun):
 
             # Submit a new job to replace the completed one
             if next_params:
-                next_future = client.submit(target_fun, next_params.config,
-                                            next_params.seed)
+                next_future = client.submit(target_fun, next_params.config, next_params.seed)
                 futures[next_future] = next_params  # Track it
 
             try:

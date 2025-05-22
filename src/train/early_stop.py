@@ -1,7 +1,7 @@
 import numpy as np
 import logging
 
-logger = logging.getLogger('training')
+logger = logging.getLogger("training")
 
 
 class EarlyStopper:
@@ -52,11 +52,14 @@ class EarlyStopper:
 
         if stall_count == 0:
             logger.info(
-                f"EarlyStopper: Patience reset. New best loss {best_loss:0.04f}. " +
-                f"Improvement was {improvement*100:0.02f}%.")
+                f"EarlyStopper: Patience reset. New best loss {best_loss:0.04f}. "
+                + f"Improvement was {improvement * 100:0.02f}%."
+            )
         else:
-            logger.info(f"EarlyStopper: Patience {stall_count}/{self.patience}. " +
-                        f"Improvement was {improvement*100:0.02f}%.")
+            logger.info(
+                f"EarlyStopper: Patience {stall_count}/{self.patience}. "
+                + f"Improvement was {improvement * 100:0.02f}%."
+            )
 
         return stall_count >= self.patience
 
@@ -65,9 +68,9 @@ class EarlyStopper:
     def get_state(self):
         """Returns a dictionary containing the essential state."""
         return {
-            'patience': self.patience,
-            'threshold': self.threshold,
-            'loss_list': self.loss_list,
+            "patience": self.patience,
+            "threshold": self.threshold,
+            "loss_list": self.loss_list,
         }
 
     @classmethod
@@ -75,10 +78,9 @@ class EarlyStopper:
         """Creates a new instance from a saved state dictionary."""
         try:
             # Create instance with saved params
-            instance = cls(patience=state['patience'], threshold=state['threshold'])
+            instance = cls(patience=state["patience"], threshold=state["threshold"])
             # Set the dynamic state
-            instance.loss_list = state['loss_list']
+            instance.loss_list = state["loss_list"]
             return instance
         except KeyError as e:
-            raise ValueError(
-                f"Missing key in state dictionary for creating instance: {e}")
+            raise ValueError(f"Missing key in state dictionary for creating instance: {e}")

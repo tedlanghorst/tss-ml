@@ -1,15 +1,15 @@
 import equinox as eqx
+import jax
 import jax.numpy as jnp
-import jax.random as jrandom
 from jaxtyping import Array, PRNGKeyArray
 
-from .base_model import BaseModel
-from .layers.static_mlp import StaticMLP
-from .layers.ealstm import EALSTM
-from .layers.transformer import CrossAttnDecoder
+from models.transformer import StaticEmbedder, CrossAttnDecoder
+
+from ..layers.static_mlp import StaticMLP
+from ..layers.static_lstm import StaticLSTM
 
 
-class LSTM_MLP_ATTN(BaseModel):
+class LSTM_MLP_ATTN_SIMPLE(eqx.Module):
     """Model that uses LSTMs, MLPs, and attention to mix time frequencies.
 
     Attributes
@@ -31,8 +31,10 @@ class LSTM_MLP_ATTN(BaseModel):
 
     active_source: dict[str:bool]
     encoders: dict[str : eqx.Module]
-    static_embedder: eqx.nn.Linear
+    static_embedder: StaticEmbedder
     decoders: dict[str : eqx.Module]
+    head: eqx.nn.Linear
+    target: list[str]
 
     def __init__(
         self,
@@ -79,15 +81,13 @@ class LSTM_MLP_ATTN(BaseModel):
             (collection of features), and the accompanying encoder will be used.
             Defaults to using all sources.
         """
-        key = jrandom.PRNGKey(seed)
-        keys = jrandom.split(key, 4)
-
-        super().__init__(hidden_size, target, key=keys[0])
+        key = jax.random.PRNGKey(seed)
+        keys = jax.random.split(key, 5)
 
         # Encoder for static data if used.
         entity_aware = static_size > 0
         if entity_aware:
-            self.static_embedder = eqx.nn.Linear(static_size, hidden_size, key=keys[1])
+            self.static_embedder = StaticEmbedder(static_size, hidden_size, dropout, keys[1])
             static_size = hidden_size
         else:
             self.static_embedder = None
@@ -100,7 +100,7 @@ class LSTM_MLP_ATTN(BaseModel):
         self.active_source = active_source
 
         # Encoders for each dynamic data source.
-        encoder_keys = jrandom.split(keys[2], len(dynamic_sizes))
+        encoder_keys = jax.random.split(keys[0], len(dynamic_sizes))
         self.encoders = {}
         for (var_name, var_size), var_key in zip(dynamic_sizes.items(), encoder_keys):
             if time_aware[var_name]:
@@ -113,19 +113,35 @@ class LSTM_MLP_ATTN(BaseModel):
                     key=var_key,
                 )
             else:
-                encoder = EALSTM(
+                encoder = StaticLSTM(
                     dynamic_in_size=var_size,
                     static_in_size=static_size,
                     hidden_size=hidden_size,
                     dropout=dropout,
-                    return_all=True,
                     key=var_key,
                 )
             self.encoders[var_name] = encoder
 
+        # Cross-attn or Self-attn decoders.
+        self.decoders = {}
+        cross_vars = list(dynamic_sizes.keys())[1:]
+        decoder_keys = jax.random.split(keys[2], len(cross_vars))
         # Set up each cross-attention decoder
-        def make_decoder(k):
-            return CrossAttnDecoder(
+        if len(cross_vars) > 0:
+            for var_name, var_key in zip(cross_vars, decoder_keys):
+                self.decoders[var_name] = CrossAttnDecoder(
+                    seq_length,
+                    hidden_size,
+                    hidden_size,
+                    hidden_size,
+                    num_layers,
+                    num_heads,
+                    dropout,
+                    False,
+                    var_key,
+                )
+        else:
+            self.decoders["self"] = CrossAttnDecoder(
                 seq_length,
                 hidden_size,
                 hidden_size,
@@ -133,19 +149,16 @@ class LSTM_MLP_ATTN(BaseModel):
                 num_layers,
                 num_heads,
                 dropout,
-                entity_aware,
-                k,
+                False,
+                var_key,
             )
 
-        self.decoders = {}
-        cross_vars = list(dynamic_sizes.keys())[1:]
-
-        if cross_vars:
-            decoder_keys = jrandom.split(keys[3], len(cross_vars))
-            for var_name, var_key in zip(cross_vars, decoder_keys):
-                self.decoders[var_name] = make_decoder(var_key)
-        else:
-            self.decoders["self"] = make_decoder(keys[3])
+        self.head = eqx.nn.Linear(
+            in_features=hidden_size * len(self.decoders),
+            out_features=len(target),
+            key=keys[3],
+        )
+        self.target = target
 
     def finetune_update(self, *, active_source: dict):
         """Updates the model configuration after initialization.
@@ -180,16 +193,16 @@ class LSTM_MLP_ATTN(BaseModel):
         Array
             The output of the model.
         """
-        keys = jrandom.split(key, 3)
+        keys = jax.random.split(key, 3)
 
         # Static embedding
         if self.static_embedder:
-            static_bias = self.static_embedder(data["static"])
+            static_bias = self.static_embedder(data["static"], keys[1])
         else:
             static_bias = None
 
         # Encoders
-        encoder_keys = jrandom.split(keys[0], len(self.encoders))
+        encoder_keys = jax.random.split(keys[0], len(self.encoders))
         encoded_data = {}
         masks = {}
         for (var_name, encoder), e_key in zip(self.encoders.items(), encoder_keys):
@@ -208,7 +221,7 @@ class LSTM_MLP_ATTN(BaseModel):
 
         if len(cross_vars) > 0:
             # Use cross-attention with multiple sources
-            decoder_keys = jrandom.split(keys[2], len(cross_vars))
+            decoder_keys = jax.random.split(keys[2], len(cross_vars))
             decoded_list = []
             for k, d_key in zip(cross_vars, decoder_keys):
                 if self.active_source[k]:
@@ -216,9 +229,7 @@ class LSTM_MLP_ATTN(BaseModel):
                 else:
                     decoded = self.decoders[k](query, query, static_bias, masks[source_var], d_key)
                 decoded_list.append(decoded)
-
-            pooled_output = jnp.concat(decoded_list, axis=0)
-            # pooled_output = jnp.mean(decoded_list, axis=0)
+            pooled_output = jnp.concatenate(decoded_list, axis=0)
 
         else:
             # Use self-attention for a single source

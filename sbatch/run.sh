@@ -5,6 +5,7 @@
 partition_name="cpu"  # Default to CPU
 flag=""
 config_path=""
+mem_value="64G"  # Default memory value
 
 # Parse named arguments
 while [[ "$#" -gt 0 ]]; do
@@ -21,6 +22,14 @@ while [[ "$#" -gt 0 ]]; do
         --cpu|--ceewater|--gpu|--gpu-short|--gpu-long|--gpupod|--high-vram|--high-vram-dual)
             # Strip the initial '--' and use the remainder as partition_name
             partition_name="${1:2}"  
+            ;;
+        --mem)
+            if [[ -z "$2" ]]; then
+                echo "Error: --mem requires an argument (e.g., --mem 32G)"
+                exit 1
+            fi
+            mem_value="$2"
+            shift
             ;;
         *)
             echo "Unknown parameter passed: $1"
@@ -95,7 +104,7 @@ get_sbatch_config() {
             ENVIRONMENT_LINES+="nvidia-smi -L\n"
             ;;
         gpupod)
-            SBATCH_DIRECTIVES+="#SBATCH -t 14-00:00:00\n"
+            SBATCH_DIRECTIVES+="#SBATCH -t 7-00:00:00\n"
             SBATCH_DIRECTIVES+="#SBATCH -p gpupod-l40s\n"
             SBATCH_DIRECTIVES+="#SBATCH -q gpu-quota-16\n"
             SBATCH_DIRECTIVES+="#SBATCH -A pi_cjgleason_umass_edu\n"
@@ -106,7 +115,7 @@ get_sbatch_config() {
             ENVIRONMENT_LINES+="nvidia-smi -L\n"
             ;;
         high-vram)
-            SBATCH_DIRECTIVES+="#SBATCH -t 14-00:00:00\n"
+            SBATCH_DIRECTIVES+="#SBATCH -t 7-00:00:00\n"
             SBATCH_DIRECTIVES+="#SBATCH -p gpu\n"
             SBATCH_DIRECTIVES+="#SBATCH -q long\n"
             SBATCH_DIRECTIVES+="#SBATCH --gpus=1\n"
@@ -147,7 +156,7 @@ submit_job() {
 #!/bin/bash
 #SBATCH --job-name="$JOB_NAME"
 #SBATCH -c 2
-#SBATCH --mem=64G 
+#SBATCH --mem=$mem_value
 #SBATCH -o ${output_dir}/${config_basename}.out
 $(echo -e "$SBATCH_DIRECTIVES")
 

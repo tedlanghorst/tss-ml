@@ -49,15 +49,9 @@ class GatedResidualNetwork(eqx.Module):
             )
         keys = jax.random.split(key, 4)
 
-        self.eta2_dynamic = eqx.nn.Linear(input_size,
-                                          hidden_size,
-                                          use_bias=True,
-                                          key=keys[0])
+        self.eta2_dynamic = eqx.nn.Linear(input_size, hidden_size, use_bias=True, key=keys[0])
         if context_size is not None:
-            self.eta2_static = eqx.nn.Linear(context_size,
-                                             hidden_size,
-                                             use_bias=False,
-                                             key=keys[1])
+            self.eta2_static = eqx.nn.Linear(context_size, hidden_size, use_bias=False, key=keys[1])
         else:
             self.eta2_static = None
 
@@ -71,9 +65,9 @@ class GatedResidualNetwork(eqx.Module):
         elif self.eta2_static or context is not None:
             raise ValueError(
                 "Either context weights were created and no context was passed during call, "
-                +
-                "or context was passed during call with no context weights created during init."
-                + f"\nweights:{self.eta2_static}\ncontext:{context}")
+                + "or context was passed during call with no context weights created during init."
+                + f"\nweights:{self.eta2_static}\ncontext:{context}"
+            )
         else:
             context_term = 0
 
