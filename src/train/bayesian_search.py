@@ -120,5 +120,5 @@ def manual_smac_optimize(cfg: dict, n_workers: int, n_runs: int, target_fun):
 
             try:
                 next_params = facade.ask()
-            except:
-                next_params = None
+            except StopIteration:
+                next_params = None  # No more trials left

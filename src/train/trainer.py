@@ -21,6 +21,11 @@ import models
 from .step import make_step, compute_loss_fn
 from .early_stop import EarlyStopper
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from data import HydroDataLoader
+
 
 class Trainer:
     """Trainer class for training hydrological models.
@@ -74,7 +79,7 @@ class Trainer:
 
     cfg: dict
     logger: logging.Logger
-    dataloader: "data.HydroDataLoader"
+    dataloader: "HydroDataLoader"
     log_dir: Path
     num_epochs: int
     lr_schedule: optax.Schedule
@@ -90,7 +95,7 @@ class Trainer:
     def __init__(
         self,
         cfg: dict,
-        dataloader: "data.HydroDataLoader" = None,
+        dataloader: "HydroDataLoader" = None,
         *,
         log_dir: Path | None = None,
         checkpoint: dict | None = None,

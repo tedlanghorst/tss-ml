@@ -38,13 +38,13 @@ def make(cfg: dict):
         raise ValueError(err_str)
 
     model = model_fn(**cfg["model_args"])
-    num_params, memory_bytes = count_parameters(model)
-    size, unit = human_readable_size(memory_bytes)
+    num_params, memory_bytes = _count_parameters(model)
+    size, unit = _human_readable_size(memory_bytes)
     print(f"Model contains {num_params:,} parameters, using {size:.2f}{unit} memory.")
     return model
 
 
-def count_parameters(model: PyTree):
+def _count_parameters(model: PyTree):
     """Counts the trainable parameters in a model and estimates its memory usage.
 
     Parameters
@@ -71,7 +71,7 @@ def count_parameters(model: PyTree):
 
 
 # Convert bytes to a human-readable format
-def human_readable_size(size):
+def _human_readable_size(size):
     for unit in ["B", "KB", "MB", "GB", "TB"]:
         if size < 1024.0 or unit == "TB":
             break

@@ -343,9 +343,8 @@ class StaticContextEncoder(eqx.Module):
         self.lstm_encoder = GatedResidualNetwork(hidden_size, dropout=dropout, key=keys[2])
         self.enrichment_encoder = GatedResidualNetwork(hidden_size, dropout=dropout, key=keys[3])
 
-    def __call__(self, static_data):
+    def __call__(self, static_data, key):
         keys = jrandom.split(key, 4)
-        static_data = {"static": data["x_s"][jnp.newaxis, :]}
         static_vars = self.static_vsn(static_data, key=keys[0])  # (1, hidden_size)
         dynamic_vsn_context = self.dynamic_vsn_encoder(static_vars[0, :], None, keys[1])
         lstm_context = self.lstm_encoder(static_vars[0, :], None, keys[2])
@@ -430,7 +429,7 @@ class TemporalFusionTransformer_take2(eqx.Module):
         self.target = target
 
     def __call__(self, data: Dict[str, jnp.ndarray], key) -> jnp.ndarray:
-        keys = list(jrandom.split(key, 12))
+        # keys = list(jrandom.split(key, 12))
 
         # Replace missing data with the learned missing data token
         dynamic_data = {}  # {key0:(seq_len, dynamic_sizes[key0]) ... keyn:(seq_len, dynamic_sizes[keyn])}
